@@ -203,7 +203,11 @@ const App: React.FC = () => {
               
               for (let i = 1; i <= pdf.numPages; i++) {
                   const page = await pdf.getPage(i);
-                  const viewport = page.getViewport({ scale: 0.5 });
+                  
+                  // OPTIMIZATION: Calculate dynamic scale for thumbnail (approx 200px width)
+                  const originalViewport = page.getViewport({ scale: 1 });
+                  const scale = Math.min(200 / originalViewport.width, 1);
+                  const viewport = page.getViewport({ scale });
                   
                   const canvas = document.createElement('canvas');
                   const context = canvas.getContext('2d');
@@ -214,7 +218,11 @@ const App: React.FC = () => {
                   
                   await page.render({ canvasContext: context, viewport: viewport }).promise;
                   
-                  const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                  // Clean up resources
+                  page.cleanup();
+                  
+                  // Lower quality slightly for faster base64 conversion
+                  const imageDataUrl = canvas.toDataURL('image/jpeg', 0.6);
                   allPreviews.push({ file, pageNum: i, imageDataUrl });
               }
           } catch (e) {
