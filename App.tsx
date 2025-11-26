@@ -116,7 +116,7 @@ const App: React.FC = () => {
             <p className="ml-2">👉 Inverted, merged, and formatted slides in a printable layout</p>
         </div>
         <p className="mt-4">🛠️ This process may take a while.</p>
-        <p className="mt-4 text-yellow-400 font-bold">NOTE: AI cover page creation may not work for some users! We will fix it soon.</p>
+        <p className="mt-4 text-red-500 font-bold">NOTE: AI cover page creation may not work for some users! We will fix it soon.</p>
     </div>
   ];
 
