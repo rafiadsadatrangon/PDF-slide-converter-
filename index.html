@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- Primary Meta Tags -->
+    <title>AI PDF Slide Converter | ACS, Udvash, PW & Bondi Pathshala Style</title>
+    <meta name="title" content="AI PDF Slide Converter | ACS, Udvash, PW & Bondi Pathshala Style" />
+    <meta name="description" content="The ultimate AI PDF Slide Converter for students. Invert colors, merge PDFs, and generate AI cover pages. Optimized for ACS, Bondi Pathshala, Udvash, and PW lecture slides." />
+    <meta name="keywords" content="ai pdf converter, ai slide converter, ACS slide converter, acs slide converter, Bondi Pathshala slide converter, Udvash slide converter, Udvash pdf converter, PW slide converter, PW pdf converter, pdf converter app, lecture slide printer, dark mode to light mode pdf" />
+    <meta name="robots" content="index, follow" />
+    <meta name="language" content="English" />
+    <meta name="author" content="AI PDF Slide Converter" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="AI PDF Slide Converter | ACS, Udvash, PW & Bondi Pathshala Style" />
+    <meta property="og:description" content="The ultimate AI PDF Slide Converter for students. Invert colors, merge PDFs, and generate AI cover pages. Optimized for ACS, Bondi Pathshala, Udvash, and PW lecture slides." />
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:title" content="AI PDF Slide Converter | ACS, Udvash, PW & Bondi Pathshala Style" />
+    <meta property="twitter:description" content="The ultimate AI PDF Slide Converter for students. Invert colors, merge PDFs, and generate AI cover pages. Optimized for ACS, Bondi Pathshala, Udvash, and PW lecture slides." />
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+      /* Using a more direct way to import a font that looks like 'Holiday' */
+      @import url('https://fonts.googleapis.com/css2?family=Holtwood+One+SC&display=swap');
+
+      body {
+        font-family: 'Poppins', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      }
+      .font-holiday {
+        font-family: 'Holtwood One SC', serif;
+      }
+      .gradient-bg {
+        background: linear-gradient(135deg, #4b0082, #FF1493, #7b2ff7, #00c6ff, #008000, #0072ff, #008000);
+        background-size: 1400% 1400%;
+        animation: gradientShift 50s ease infinite;
+      }
+      @keyframes gradientShift {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      }
+      .glass-box {
+        background: rgba(255, 255, 255, 0.15);
+        backdrop-filter: blur(15px);
+        border: 2px solid rgba(255, 255, 255, 0.3);
+      }
+       .glass-box-inner {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+      /* Custom scrollbar for status box */
+      .status-box::-webkit-scrollbar {
+        width: 8px;
+      }
+      .status-box::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+      }
+      .status-box::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.3);
+        border-radius: 10px;
+      }
+      .status-box::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.5);
+      }
+    </style>
+    <!-- pdf.js for rendering PDF pages to canvas -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    </script>
+    <!-- fontkit for custom fonts in pdf-lib -->
+    <script src="https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.0",
+    "pdf-lib": "https://aistudiocdn.com/pdf-lib@^1.17.1",
+    "jszip": "https://aistudiocdn.com/jszip@^3.10.1",
+    "path": "https://aistudiocdn.com/path@^0.12.7",
+    "vite": "https://aistudiocdn.com/vite@^7.2.2",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.0",
+    "@capacitor/core": "https://aistudiocdn.com/@capacitor/core@^7.4.4",
+    "@capacitor/filesystem": "https://aistudiocdn.com/@capacitor/filesystem@^7.1.4"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="gradient-bg text-white">
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
