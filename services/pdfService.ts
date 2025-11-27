@@ -149,7 +149,12 @@ const invertPdf = async (
         if (signal.aborted) throw new DOMException("Aborted", "AbortError");
         
         const page = await pdf.getPage(i + 1);
-        const viewport = page.getViewport({ scale: 1.5 });
+        
+        // Fix: Limit resolution for mobile devices to prevent crashes
+        const originalViewport = page.getViewport({ scale: 1 });
+        const MAX_WIDTH = 1024; // Limit width to 1024px to save mobile memory
+        const scale = Math.min(MAX_WIDTH / originalViewport.width, 1.5); 
+        const viewport = page.getViewport({ scale });
 
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d', { willReadFrequently: true });
@@ -189,13 +194,21 @@ const invertPdf = async (
                 const reader = new FileReader();
                 reader.onloadend = () => resolve(reader.result as ArrayBuffer);
                 reader.readAsArrayBuffer(blob);
-            }, 'image/jpeg', 0.8);
+            }, 'image/jpeg', 0.7); // Reduced quality slightly to 0.7 for memory saving
         });
 
+        // Cleanup: Force garbage collection on canvas data
+        canvas.width = 0;
+        canvas.height = 0;
+        page.cleanup();
+
         const image = await invertedDoc.embedJpg(invertedImageBytes);
-        const newPage = invertedDoc.addPage([canvas.width, canvas.height]);
-        newPage.drawImage(image, { x: 0, y: 0, width: canvas.width, height: canvas.height });
+        const newPage = invertedDoc.addPage([viewport.width, viewport.height]);
+        newPage.drawImage(image, { x: 0, y: 0, width: viewport.width, height: viewport.height });
         setStatus(`    - Inverted page ${i + 1}/${numPages}`);
+        
+        // Add small delay to prevent UI freeze and allow GC on mobile
+        await new Promise(r => setTimeout(r, 0));
     }
 
     return invertedDoc.save();

@@ -14,7 +14,7 @@ declare const pdfjsLib: any;
 interface Slide {
   file: File;
   pageNum: number; // 1-based
-  imageDataUrl: string;
+  imageDataUrl: string; // Blob URL
 }
 
 // === START: Embedded Components ===
@@ -105,6 +105,7 @@ const App: React.FC = () => {
   const [uiState, setUiState] = useState<'idle' | 'previewsLoading' | 'previewing' | 'processing' | 'done' | 'error'>('idle');
   const [slidePreviews, setSlidePreviews] = useState<Slide[]>([]);
   const [selectedSlides, setSelectedSlides] = useState<Set<number>>(new Set());
+  const [progress, setProgress] = useState(0);
 
   const getInitialStatusMessage = () => [
       <div key="initial-status" className="text-sm">
@@ -120,7 +121,22 @@ const App: React.FC = () => {
     </div>
   ];
 
+  // Helper to cleanup blobs
+  const cleanupPreviews = useCallback(() => {
+    slidePreviews.forEach(slide => {
+      if (slide.imageDataUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(slide.imageDataUrl);
+      }
+    });
+  }, [slidePreviews]);
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => cleanupPreviews();
+  }, [cleanupPreviews]);
+
   const resetState = useCallback(() => {
+    cleanupPreviews();
     setFiles([]);
     setChapterName('');
     setInstructorName('');
@@ -133,7 +149,8 @@ const App: React.FC = () => {
     setUiState('idle');
     setSlidePreviews([]);
     setSelectedSlides(new Set());
-  }, []);
+    setProgress(0);
+  }, [cleanupPreviews]);
 
   useState(resetState);
 
@@ -183,26 +200,31 @@ const App: React.FC = () => {
 
   const handleFilesSelected = (selectedFiles: FileList) => {
       if (selectedFiles.length > 0) {
+        cleanupPreviews();
         setFiles(Array.from(selectedFiles));
         setUiState('previewsLoading');
         setError(null);
         setProcessedPdfBlob(null);
         setStatus([]);
+        setProgress(0);
       }
   };
   
   const generateSlidePreviews = useCallback(async (filesToProcess: File[]) => {
-      setStatus(['⏳ Generating slide previews... This might take a moment.']);
+      setStatus(['⏳ Generating slide previews...']);
+      setProgress(0);
       const allPreviews: Slide[] = [];
+      const totalFiles = filesToProcess.length;
       
-      for (const file of filesToProcess) {
+      for (let fileIdx = 0; fileIdx < totalFiles; fileIdx++) {
+          const file = filesToProcess[fileIdx];
           try {
               const fileBytes = await file.arrayBuffer();
               const loadingTask = pdfjsLib.getDocument({ data: fileBytes });
               const pdf = await loadingTask.promise;
               
-              for (let i = 1; i <= pdf.numPages; i++) {
-                  const page = await pdf.getPage(i);
+              for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                  const page = await pdf.getPage(pageNum);
                   
                   // OPTIMIZATION: Calculate dynamic scale for thumbnail (approx 200px width)
                   const originalViewport = page.getViewport({ scale: 1 });
@@ -221,9 +243,30 @@ const App: React.FC = () => {
                   // Clean up resources
                   page.cleanup();
                   
-                  // Lower quality slightly for faster base64 conversion
-                  const imageDataUrl = canvas.toDataURL('image/jpeg', 0.6);
-                  allPreviews.push({ file, pageNum: i, imageDataUrl });
+                  // Use Blob URL instead of Data URL for memory efficiency
+                  const blob = await new Promise<Blob | null>(resolve => 
+                    canvas.toBlob(resolve, 'image/jpeg', 0.6)
+                  );
+                  
+                  // Clear canvas memory explicitly
+                  canvas.width = 0;
+                  canvas.height = 0;
+                  
+                  if (blob) {
+                    const blobUrl = URL.createObjectURL(blob);
+                    allPreviews.push({ file, pageNum: pageNum, imageDataUrl: blobUrl });
+                  }
+
+                  // Update progress: 
+                  // Base progress = percentage of full files completed
+                  const fileProgressBase = (fileIdx / totalFiles) * 100;
+                  // Current file progress = percentage of current file's pages processed, weighted by 1/totalFiles
+                  const pageProgress = (pageNum / pdf.numPages) * (100 / totalFiles);
+                  
+                  setProgress(Math.min(Math.round(fileProgressBase + pageProgress), 99));
+
+                  // Small pause to let UI breathe and allow GC
+                  if (pageNum % 5 === 0) await new Promise(r => setTimeout(r, 0));
               }
           } catch (e) {
               console.error("Error processing file for preview:", file.name, e);
@@ -233,6 +276,7 @@ const App: React.FC = () => {
           }
       }
       
+      setProgress(100);
       setSlidePreviews(allPreviews);
       setSelectedSlides(new Set());
       setUiState('previewing');
@@ -263,8 +307,14 @@ const App: React.FC = () => {
       const mergedPdfDoc = await PDFDocument.create();
       const loadedDocs = new Map<File, PDFDocument>();
 
+      let count = 0;
       for (const slide of slidePreviews) {
         if (abortControllerRef.current.signal.aborted) throw new DOMException("Aborted", "AbortError");
+        
+        // Yield to main thread occasionally
+        count++;
+        if (count % 10 === 0) await new Promise(r => setTimeout(r, 0));
+
         if (!loadedDocs.has(slide.file)) {
           const fileBytes = await slide.file.arrayBuffer();
           const doc = await PDFDocument.load(fileBytes, { ignoreEncryption: true });
@@ -298,7 +348,12 @@ const App: React.FC = () => {
         setUiState('previewing');
       } else {
         console.error(err);
-        setError(`❌ Error: ${err.message}`);
+        // Better error message for memory issues
+        if (err.message && (err.message.includes('memory') || err.message.includes('allocation'))) {
+            setError("❌ Out of memory! Try processing fewer slides at a time.");
+        } else {
+            setError(`❌ Error: ${err.message}`);
+        }
         setStatus([]);
         setUiState('error');
       }
@@ -326,7 +381,16 @@ const App: React.FC = () => {
   };
 
   const handleDeleteSelected = () => {
-    setSlidePreviews(prev => prev.filter((_, index) => !selectedSlides.has(index)));
+    setSlidePreviews(prev => {
+        const newPreviews = prev.filter((_, index) => !selectedSlides.has(index));
+        // Revoke URLs for deleted slides to free memory
+        prev.forEach((slide, index) => {
+            if (selectedSlides.has(index) && slide.imageDataUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(slide.imageDataUrl);
+            }
+        });
+        return newPreviews;
+    });
     setSelectedSlides(new Set());
   };
 
@@ -415,9 +479,19 @@ const App: React.FC = () => {
               </h2>
               <div className="status-box w-full flex-grow bg-white/5 p-4 rounded-2xl min-h-[200px] max-h-[300px] overflow-y-auto text-sm flex flex-col">
                 {uiState === 'previewsLoading' ? (
-                    <div className="text-center flex-grow flex flex-col items-center justify-center">
-                        <SpinnerIcon />
-                        <p className="mt-4 text-white/80">Reading PDFs & creating previews...</p>
+                    <div className="flex flex-col items-center justify-center w-full h-full p-8">
+                        <div className="w-full max-w-md bg-white/10 rounded-full h-6 mb-4 overflow-hidden backdrop-blur-sm border border-white/20">
+                            <div 
+                                className="bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 h-full rounded-full transition-all duration-300 ease-out flex items-center justify-end pr-2"
+                                style={{ width: `${Math.round(progress)}%` }}
+                            >
+                                {progress > 10 && <span className="text-[10px] font-bold text-white shadow-sm">{Math.round(progress)}%</span>}
+                            </div>
+                        </div>
+                        <p className="text-white/90 font-medium text-lg animate-pulse">
+                           {progress < 100 ? `Processing... ${Math.round(progress)}%` : 'Finalizing...'}
+                        </p>
+                        <p className="mt-2 text-white/60 text-sm text-center">Reading PDFs & creating thumbnails</p>
                     </div>
                 ) : (
                   <>
