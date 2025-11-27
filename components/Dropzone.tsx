@@ -72,7 +72,6 @@ const Dropzone: React.FC<DropzoneProps> = ({ onFilesSelected, files }) => {
         type="file" 
         multiple 
         required 
-        accept=".pdf"
         onChange={handleFileChange}
         className="hidden"
       />
@@ -80,7 +79,7 @@ const Dropzone: React.FC<DropzoneProps> = ({ onFilesSelected, files }) => {
         <div className="text-center">
           <UploadIcon />
           <p className="text-sm text-white/80"><span className="font-semibold">Click to upload</span> or drag and drop</p>
-          <p className="text-xs text-white/60">PDF files only</p>
+          <p className="text-xs text-white/60">Upload PDF, Images, or Text files</p>
         </div>
       ) : (
         <div className="w-full h-full overflow-y-auto">

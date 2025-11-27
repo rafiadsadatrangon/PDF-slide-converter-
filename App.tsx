@@ -5,7 +5,7 @@ import { SpinnerIcon } from './components/Icons';
 import Dropzone from './components/Dropzone';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, PageSizes, StandardFonts, rgb } from 'pdf-lib';
 
 // Add type declarations for CDN scripts
 declare const pdfjsLib: any;
@@ -219,54 +219,81 @@ const App: React.FC = () => {
       for (let fileIdx = 0; fileIdx < totalFiles; fileIdx++) {
           const file = filesToProcess[fileIdx];
           try {
-              const fileBytes = await file.arrayBuffer();
-              const loadingTask = pdfjsLib.getDocument({ data: fileBytes });
-              const pdf = await loadingTask.promise;
-              
-              for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-                  const page = await pdf.getPage(pageNum);
+              if (file.type === 'application/pdf') {
+                  const fileBytes = await file.arrayBuffer();
+                  const loadingTask = pdfjsLib.getDocument({ data: fileBytes });
+                  const pdf = await loadingTask.promise;
                   
-                  // OPTIMIZATION: Calculate dynamic scale for thumbnail (approx 200px width)
-                  const originalViewport = page.getViewport({ scale: 1 });
-                  const scale = Math.min(200 / originalViewport.width, 1);
-                  const viewport = page.getViewport({ scale });
-                  
-                  const canvas = document.createElement('canvas');
-                  const context = canvas.getContext('2d');
-                  if (!context) continue;
-                  
-                  canvas.height = viewport.height;
-                  canvas.width = viewport.width;
-                  
-                  await page.render({ canvasContext: context, viewport: viewport }).promise;
-                  
-                  // Clean up resources
-                  page.cleanup();
-                  
-                  // Use Blob URL instead of Data URL for memory efficiency
-                  const blob = await new Promise<Blob | null>(resolve => 
-                    canvas.toBlob(resolve, 'image/jpeg', 0.6)
-                  );
-                  
-                  // Clear canvas memory explicitly
-                  canvas.width = 0;
-                  canvas.height = 0;
-                  
-                  if (blob) {
-                    const blobUrl = URL.createObjectURL(blob);
-                    allPreviews.push({ file, pageNum: pageNum, imageDataUrl: blobUrl });
+                  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                      const page = await pdf.getPage(pageNum);
+                      
+                      const originalViewport = page.getViewport({ scale: 1 });
+                      const scale = Math.min(200 / originalViewport.width, 1);
+                      const viewport = page.getViewport({ scale });
+                      
+                      const canvas = document.createElement('canvas');
+                      const context = canvas.getContext('2d');
+                      if (!context) continue;
+                      
+                      canvas.height = viewport.height;
+                      canvas.width = viewport.width;
+                      
+                      await page.render({ canvasContext: context, viewport: viewport }).promise;
+                      page.cleanup();
+                      
+                      const blob = await new Promise<Blob | null>(resolve => 
+                        canvas.toBlob(resolve, 'image/jpeg', 0.6)
+                      );
+                      canvas.width = 0; canvas.height = 0;
+                      
+                      if (blob) {
+                        const blobUrl = URL.createObjectURL(blob);
+                        allPreviews.push({ file, pageNum: pageNum, imageDataUrl: blobUrl });
+                      }
+                      
+                      const fileProgressBase = (fileIdx / totalFiles) * 100;
+                      const pageProgress = (pageNum / pdf.numPages) * (100 / totalFiles);
+                      setProgress(Math.min(Math.round(fileProgressBase + pageProgress), 99));
+
+                      if (pageNum % 5 === 0) await new Promise(r => setTimeout(r, 0));
                   }
-
-                  // Update progress: 
-                  // Base progress = percentage of full files completed
-                  const fileProgressBase = (fileIdx / totalFiles) * 100;
-                  // Current file progress = percentage of current file's pages processed, weighted by 1/totalFiles
-                  const pageProgress = (pageNum / pdf.numPages) * (100 / totalFiles);
-                  
-                  setProgress(Math.min(Math.round(fileProgressBase + pageProgress), 99));
-
-                  // Small pause to let UI breathe and allow GC
-                  if (pageNum % 5 === 0) await new Promise(r => setTimeout(r, 0));
+              } else if (file.type.startsWith('image/')) {
+                  // Handle Image Files
+                  const imgBitmap = await createImageBitmap(file);
+                  const canvas = document.createElement('canvas');
+                  // Limit max dimension for thumbnail
+                  const scale = Math.min(200 / imgBitmap.width, 1);
+                  canvas.width = imgBitmap.width * scale;
+                  canvas.height = imgBitmap.height * scale;
+                  const ctx = canvas.getContext('2d');
+                  if (ctx) {
+                      ctx.drawImage(imgBitmap, 0, 0, canvas.width, canvas.height);
+                      const blob = await new Promise<Blob | null>(r => canvas.toBlob(r, 'image/jpeg', 0.6));
+                      if (blob) {
+                           allPreviews.push({ file, pageNum: 1, imageDataUrl: URL.createObjectURL(blob) });
+                      }
+                  }
+                  imgBitmap.close();
+                  setProgress(Math.min(Math.round(((fileIdx + 1) / totalFiles) * 100), 99));
+              } else {
+                  // Handle Text or other files as basic text render
+                   try {
+                       const text = await file.text();
+                       const canvas = document.createElement('canvas');
+                       canvas.width = 400; canvas.height = 500;
+                       const ctx = canvas.getContext('2d');
+                       if(ctx) {
+                           ctx.fillStyle = 'white'; ctx.fillRect(0,0,400,500);
+                           ctx.fillStyle = 'black'; ctx.font = '12px sans-serif';
+                           const lines = text.split('\n').slice(0, 20);
+                           lines.forEach((l, i) => ctx.fillText(l.substring(0,50), 10, 20 + i*15));
+                           const blob = await new Promise<Blob | null>(r => canvas.toBlob(r, 'image/jpeg', 0.6));
+                           if(blob) allPreviews.push({ file, pageNum: 1, imageDataUrl: URL.createObjectURL(blob) });
+                       }
+                       setProgress(Math.min(Math.round(((fileIdx + 1) / totalFiles) * 100), 99));
+                   } catch(err) {
+                       console.warn("Could not read file as text", file.name);
+                   }
               }
           } catch (e) {
               console.error("Error processing file for preview:", file.name, e);
@@ -311,18 +338,87 @@ const App: React.FC = () => {
       for (const slide of slidePreviews) {
         if (abortControllerRef.current.signal.aborted) throw new DOMException("Aborted", "AbortError");
         
-        // Yield to main thread occasionally
         count++;
         if (count % 10 === 0) await new Promise(r => setTimeout(r, 0));
 
-        if (!loadedDocs.has(slide.file)) {
-          const fileBytes = await slide.file.arrayBuffer();
-          const doc = await PDFDocument.load(fileBytes, { ignoreEncryption: true });
-          loadedDocs.set(slide.file, doc);
+        if (slide.file.type === 'application/pdf') {
+            if (!loadedDocs.has(slide.file)) {
+                const fileBytes = await slide.file.arrayBuffer();
+                const doc = await PDFDocument.load(fileBytes, { ignoreEncryption: true });
+                loadedDocs.set(slide.file, doc);
+            }
+            const sourceDoc = loadedDocs.get(slide.file)!;
+            const [copiedPage] = await mergedPdfDoc.copyPages(sourceDoc, [slide.pageNum - 1]);
+            mergedPdfDoc.addPage(copiedPage);
+        } else if (slide.file.type.startsWith('image/')) {
+             const imageBytes = await slide.file.arrayBuffer();
+             let image;
+             try {
+                // PDF-lib natively supports PNG and JPG
+                if (slide.file.type === 'image/png') {
+                    image = await mergedPdfDoc.embedPng(imageBytes);
+                } else if (slide.file.type === 'image/jpeg') {
+                    image = await mergedPdfDoc.embedJpg(imageBytes);
+                } else {
+                    // Fallback: Convert other image formats to JPG using canvas
+                    const bmp = await createImageBitmap(slide.file);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = bmp.width; canvas.height = bmp.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx?.drawImage(bmp,0,0);
+                    const blob = await new Promise<Blob|null>(r=>canvas.toBlob(r, 'image/jpeg', 0.8));
+                    const buf = await blob?.arrayBuffer();
+                    if(buf) image = await mergedPdfDoc.embedJpg(buf);
+                    bmp.close();
+                }
+             } catch(e) {
+                 console.error("Failed to embed image", e);
+             }
+             
+             if(image) {
+                 const page = mergedPdfDoc.addPage(PageSizes.A4);
+                 const { width, height } = image.scaleToFit(page.getWidth(), page.getHeight());
+                 page.drawImage(image, { 
+                     x: (page.getWidth() - width) / 2, 
+                     y: (page.getHeight() - height) / 2, 
+                     width, 
+                     height 
+                 });
+             }
+        } else {
+            // Assume Text File
+            try {
+                const text = await slide.file.text();
+                const page = mergedPdfDoc.addPage(PageSizes.A4);
+                const font = await mergedPdfDoc.embedFont(StandardFonts.Helvetica);
+                const fontSize = 10;
+                const margin = 50;
+                const lineHeight = 12;
+                const maxWidth = page.getWidth() - margin * 2;
+                
+                const words = text.split(/(\s+)/); // Split by whitespace but keep delimiters
+                let line = '';
+                let y = page.getHeight() - margin;
+
+                for (const word of words) {
+                    if (y < margin) break; // Simple overflow stop
+                    const testLine = line + word;
+                    const width = font.widthOfTextAtSize(testLine, fontSize);
+                    if (width > maxWidth) {
+                        page.drawText(line, { x: margin, y, size: fontSize, font, color: rgb(0,0,0) });
+                        line = word.trimStart(); 
+                        y -= lineHeight;
+                    } else {
+                        line = testLine;
+                    }
+                }
+                if (line.trim().length > 0) {
+                    page.drawText(line, { x: margin, y, size: fontSize, font, color: rgb(0,0,0) });
+                }
+            } catch(e) {
+                console.error("Failed to process text file", e);
+            }
         }
-        const sourceDoc = loadedDocs.get(slide.file)!;
-        const [copiedPage] = await mergedPdfDoc.copyPages(sourceDoc, [slide.pageNum - 1]);
-        mergedPdfDoc.addPage(copiedPage);
       }
 
       const preProcessedPdfBytes = await mergedPdfDoc.save();
@@ -348,7 +444,6 @@ const App: React.FC = () => {
         setUiState('previewing');
       } else {
         console.error(err);
-        // Better error message for memory issues
         if (err.message && (err.message.includes('memory') || err.message.includes('allocation'))) {
             setError("❌ Out of memory! Try processing fewer slides at a time.");
         } else {
@@ -383,7 +478,6 @@ const App: React.FC = () => {
   const handleDeleteSelected = () => {
     setSlidePreviews(prev => {
         const newPreviews = prev.filter((_, index) => !selectedSlides.has(index));
-        // Revoke URLs for deleted slides to free memory
         prev.forEach((slide, index) => {
             if (selectedSlides.has(index) && slide.imageDataUrl.startsWith('blob:')) {
                 URL.revokeObjectURL(slide.imageDataUrl);
@@ -417,6 +511,13 @@ const App: React.FC = () => {
                 placeholder="Enter Chapter Name (Optional)"
                 className="w-full p-3 rounded-lg border border-white/20 bg-white/10 placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-pink-400 transition-all"
               />
+              <input 
+                type="text" 
+                value={instructorName}
+                onChange={(e) => setInstructorName(e.target.value)}
+                placeholder="Enter Instructor Name (Optional)"
+                className="w-full p-3 rounded-lg border border-white/20 bg-white/10 placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-pink-400 transition-all"
+              />
               <div className="w-full">
                 <label htmlFor="theme-select" className="w-full text-sm text-white/80 mb-2 block">Choose cover page type:</label>
                 <select
@@ -443,13 +544,6 @@ const App: React.FC = () => {
                   <option value="Art Deco">Art Deco Theme</option>
                 </select>
               </div>
-              <input 
-                type="text" 
-                value={instructorName}
-                onChange={(e) => setInstructorName(e.target.value)}
-                placeholder="Enter Instructor Name (Optional)"
-                className="w-full p-3 rounded-lg border border-white/20 bg-white/10 placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-pink-400 transition-all"
-              />
               <button 
                 type="submit" 
                 disabled={isProcessing || uiState === 'previewsLoading'}
@@ -491,7 +585,7 @@ const App: React.FC = () => {
                         <p className="text-white/90 font-medium text-lg animate-pulse">
                            {progress < 100 ? `Processing... ${Math.round(progress)}%` : 'Finalizing...'}
                         </p>
-                        <p className="mt-2 text-white/60 text-sm text-center">Reading PDFs & creating thumbnails</p>
+                        <p className="mt-2 text-white/60 text-sm text-center">Reading files & creating thumbnails</p>
                     </div>
                 ) : (
                   <>
