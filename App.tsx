@@ -107,6 +107,14 @@ const App: React.FC = () => {
   const [selectedSlides, setSelectedSlides] = useState<Set<number>>(new Set());
   const [progress, setProgress] = useState(0);
 
+  // Ref to track current previews for cleanup independently of state updates
+  const slidePreviewsRef = useRef<Slide[]>([]);
+
+  // Sync ref with state
+  useEffect(() => {
+    slidePreviewsRef.current = slidePreviews;
+  }, [slidePreviews]);
+
   const getInitialStatusMessage = () => [
       <div key="initial-status" className="text-sm">
         <p className="text-base text-white">✅ Upload PDF files serially from the left panel and check preview from the right panel.</p>
@@ -122,18 +130,27 @@ const App: React.FC = () => {
   ];
 
   // Helper to cleanup blobs
+  // We use the Ref here to avoid having to include slidePreviews in dependency arrays of effects
+  // which causes the "blank screen" bug on state updates.
   const cleanupPreviews = useCallback(() => {
-    slidePreviews.forEach(slide => {
+    slidePreviewsRef.current.forEach(slide => {
       if (slide.imageDataUrl.startsWith('blob:')) {
         URL.revokeObjectURL(slide.imageDataUrl);
       }
     });
-  }, [slidePreviews]);
+  }, []);
 
-  // Clean up on unmount
+  // Clean up on unmount ONLY
   useEffect(() => {
-    return () => cleanupPreviews();
-  }, [cleanupPreviews]);
+    return () => {
+       // Manual cleanup logic using the ref to ensure we don't depend on state closures
+       slidePreviewsRef.current.forEach(slide => {
+        if (slide.imageDataUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(slide.imageDataUrl);
+        }
+      });
+    };
+  }, []);
 
   const resetState = useCallback(() => {
     cleanupPreviews();
@@ -152,7 +169,10 @@ const App: React.FC = () => {
     setProgress(0);
   }, [cleanupPreviews]);
 
-  useState(resetState);
+  // Initial setup
+  useEffect(() => {
+      setStatus(getInitialStatusMessage());
+  }, []);
 
   const blobToBase64 = (blob: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -478,6 +498,7 @@ const App: React.FC = () => {
   const handleDeleteSelected = () => {
     setSlidePreviews(prev => {
         const newPreviews = prev.filter((_, index) => !selectedSlides.has(index));
+        // Only revoke URLs for deleted slides
         prev.forEach((slide, index) => {
             if (selectedSlides.has(index) && slide.imageDataUrl.startsWith('blob:')) {
                 URL.revokeObjectURL(slide.imageDataUrl);
