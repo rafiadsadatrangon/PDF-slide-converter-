@@ -280,6 +280,7 @@ export const processPdfs = async (
   chapterName: string,
   instructorName: string,
   theme: string,
+  invertColors: boolean,
   setStatus: (message: string) => void,
   signal: AbortSignal
 ): Promise<{ pdfBlob: Blob }> => {
@@ -294,17 +295,25 @@ export const processPdfs = async (
         setStatus("ℹ️ Skipping cover page (Chapter Name not provided).");
     }
 
-    // Step 2: Invert and Merge PDFs
+    // Step 2: Invert (optional) and Merge PDFs
     const mergedInvertedPdf = await PDFDocument.create();
 
     for (let i = 0; i < files.length; i++) {
         if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-        setStatus(`🎨 Inverting colors for ${files[i].name} (${i + 1}/${files.length})...`);
-        const fileBytes = await files[i].arrayBuffer();
-        const invertedPdfBytes = await invertPdf(fileBytes, setStatus, signal);
+        
+        let pdfBytesToMerge: ArrayBuffer;
+
+        if (invertColors) {
+            setStatus(`🎨 Inverting colors for ${files[i].name} (${i + 1}/${files.length})...`);
+            const fileBytes = await files[i].arrayBuffer();
+            pdfBytesToMerge = await invertPdf(fileBytes, setStatus, signal);
+        } else {
+             setStatus(`📄 Processing ${files[i].name} without inversion (${i + 1}/${files.length})...`);
+             pdfBytesToMerge = await files[i].arrayBuffer();
+        }
         
         setStatus(`🔗 Merging ${files[i].name}...`);
-        const sourcePdf = await PDFDocument.load(invertedPdfBytes);
+        const sourcePdf = await PDFDocument.load(pdfBytesToMerge);
         const copiedPages = await mergedInvertedPdf.copyPages(sourcePdf, sourcePdf.getPageIndices());
         copiedPages.forEach(page => mergedInvertedPdf.addPage(page));
     }

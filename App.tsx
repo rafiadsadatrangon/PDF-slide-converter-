@@ -94,6 +94,7 @@ const App: React.FC = () => {
   const [chapterName, setChapterName] = useState('');
   const [instructorName, setInstructorName] = useState('');
   const [theme, setTheme] = useState('Minimalist Abstract');
+  const [invertColors, setInvertColors] = useState(true);
   const [status, setStatus] = useState<React.ReactNode[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedPdfBlob, setProcessedPdfBlob] = useState<Blob | null>(null);
@@ -158,6 +159,7 @@ const App: React.FC = () => {
     setChapterName('');
     setInstructorName('');
     setTheme('Minimalist Abstract');
+    setInvertColors(true);
     setStatus(getInitialStatusMessage());
     setIsProcessing(false);
     setProcessedPdfBlob(null);
@@ -221,7 +223,13 @@ const App: React.FC = () => {
   const handleFilesSelected = (selectedFiles: FileList) => {
       if (selectedFiles.length > 0) {
         cleanupPreviews();
-        setFiles(Array.from(selectedFiles));
+        
+        // Convert FileList to Array and Sort automatically by name numbers
+        const sortedFiles = Array.from(selectedFiles).sort((a, b) => {
+            return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+        });
+
+        setFiles(sortedFiles);
         setUiState('previewsLoading');
         setError(null);
         setProcessedPdfBlob(null);
@@ -449,6 +457,7 @@ const App: React.FC = () => {
         chapterName,
         instructorName,
         theme,
+        invertColors,
         (newMessage) => setStatus(prev => [...prev, newMessage]),
         abortControllerRef.current.signal
       );
@@ -475,7 +484,7 @@ const App: React.FC = () => {
     } finally {
       setIsProcessing(false);
     }
-  }, [slidePreviews, chapterName, instructorName, theme]);
+  }, [slidePreviews, chapterName, instructorName, theme, invertColors]);
 
   const handleCancel = () => {
     if (abortControllerRef.current) {
@@ -524,7 +533,10 @@ const App: React.FC = () => {
         <div className="box glass-box-inner rounded-2xl p-6 flex flex-col justify-center items-center w-full lg:w-1/2 min-h-[420px]">
           <h2 className="text-3xl font-extrabold mb-6 text-center">Upload & Configure</h2>
             <form onSubmit={handleSubmit} className="w-full flex flex-col items-center justify-center space-y-5">
-              <Dropzone onFilesSelected={handleFilesSelected} files={files} />
+              <Dropzone 
+                onFilesSelected={handleFilesSelected} 
+                files={files} 
+              />
               <input 
                 type="text" 
                 value={chapterName}
@@ -565,6 +577,21 @@ const App: React.FC = () => {
                   <option value="Art Deco">Art Deco Theme</option>
                 </select>
               </div>
+
+              {/* Invert Colors Toggle */}
+              <div className="w-full flex items-center justify-between bg-white/10 p-3 rounded-lg border border-white/20">
+                  <span className="text-sm text-white/80">Invert Colors (Dark to Light)</span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                          type="checkbox" 
+                          checked={invertColors} 
+                          onChange={(e) => setInvertColors(e.target.checked)} 
+                          className="sr-only peer" 
+                      />
+                      <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-pink-400/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-pink-500"></div>
+                  </label>
+              </div>
+
               <button 
                 type="submit" 
                 disabled={isProcessing || uiState === 'previewsLoading'}
